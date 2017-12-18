@@ -97,6 +97,9 @@ func accountAnalysis() {
 		oActualTotal := 0.0
 		for _, o := range orderHistory.Orders {
 			if o.Status == "Fully Matched" {
+				if ototal == 0 {
+					fmt.Printf("Transactions:\n")
+				}
 				price := o.Price
 				volume := o.Volume
 				total := price * volume
@@ -109,6 +112,7 @@ func accountAnalysis() {
 				} else {
 					status = "LOSS"
 				}
+
 				fmt.Printf(
 					">> %0.3f%s * %0.3f = %0.3f%s \t| current value: %0.3f%s \t| %s %0.3f\n",
 					price, o.Currency, volume, total, o.Currency,

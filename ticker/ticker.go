@@ -5,53 +5,78 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/vishen/btcmarkets/api"
 )
 
-func Run(apiKey, privateKey string) {
+func Run(apiKey, privateKey string) error {
 	b := api.New(apiKey, privateKey, http.DefaultClient)
 	ctx := context.Background()
 
 	balances, err := b.Balance(ctx)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("unable to get balance: %w", err)
 	}
 
+	marketBalance := map[string]string{}
 	marketIDs := make([]string, 0, len(balances))
 	for _, balance := range balances {
-		fmt.Printf("> %s (%s) | available=%s locked=%s\n", balance.AssetName, balance.Balance, balance.Available, balance.Locked)
-		if balance.AssetName != "AUD" {
-			market := balance.AssetName + "-AUD"
-			marketIDs = append(marketIDs, market)
+		if balance.AssetName == "AUD" {
+			continue
 		}
+		market := balance.AssetName + "-AUD"
+		marketIDs = append(marketIDs, market)
 
+		marketBalance[market] = balance.Balance
 	}
-	_ = marketIDs
 
-	/*
-		marketTickerT := time.NewTicker(time.Second * 3)
-		for {
-			select {
-			case <-marketTickerT.C:
-				marketTickers, err := b.MarketTickers(ctx, marketIDs...)
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
+	marketTickers, err := b.MarketTickers(ctx, marketIDs...)
+	if err != nil {
+		return fmt.Errorf("unable to get market tickers: %w", err)
+	}
+
+	ms := []marketState{}
+	for _, m := range marketTickers {
+		ms = append(ms, marketState{
+			market:    m.MarketID,
+			balance:   marketBalance[m.MarketID],
+			lastPrice: m.LastPrice,
+		})
+	}
+
+	sort.Slice(ms, func(i, j int) bool {
+		if ms[i].value() > ms[j].value() {
+			return true
 		}
-	*/
+		//return ms[i].market < ms[j].market
+		return false
+	})
+
+	for _, m := range ms {
+		fmt.Printf("> %s, %s ($%s): $%0.4f\n", m.market, m.balance, m.lastPrice, m.value())
+	}
+
+	return nil
 }
 
 var state map[string]marketState
 
 type marketState struct {
-	market  string
-	balance string
+	market    string
+	balance   string
+	lastPrice string
 
 	cur  marketData
 	prev marketData
+}
+
+func (m marketState) value() float64 {
+	b, _ := strconv.ParseFloat(m.balance, 64)
+	l, _ := strconv.ParseFloat(m.lastPrice, 64)
+	return b * l
 }
 
 type marketData struct {
